@@ -171,7 +171,7 @@ class ContentTransformer:
                     total_items += 1
             
             if total_items == 0:
-                return gr.update(value="Please upload a file or enter YouTube URLs")
+                return gr.update(value="Please upload a file or enter YouTube URLs"), None
             
             # Handle YouTube URLs
             if youtube_urls:
@@ -180,26 +180,26 @@ class ContentTransformer:
                     status = f"Processing {len(urls)} YouTube URLs..."
                     results.append(status)
                     logger.info(status)
-                    yield gr.update(value="\n".join(results))
+                    yield gr.update(value="\n".join(results)), None
                     
                     for url in urls:
                         current_item += 1
                         status = f"Processing YouTube video {current_item}/{total_items}: {url}"
                         results.append(status)
                         logger.info(status)
-                        yield gr.update(value="\n".join(results))
+                        yield gr.update(value="\n".join(results)), None
                         try:
                             # Download YouTube audio
                             temp_file, content_name = self.download_youtube_audio(url)
                             result = self._process_single_file(temp_file, content_name, language, url)
                             results.append(result)
                             logger.info(result)
-                            yield gr.update(value="\n".join(results))
+                            yield gr.update(value="\n".join(results)), None
                         except Exception as e:
                             error_msg = f"Error processing YouTube video {url}: {str(e)}"
                             logger.error(error_msg)
                             results.append(error_msg)
-                            yield gr.update(value="\n".join(results))
+                            yield gr.update(value="\n".join(results)), None
             
             # Handle file upload
             if file_path:
@@ -208,7 +208,7 @@ class ContentTransformer:
                     status = f"Processing {len([f for f in file_path if f is not None])} uploaded files..."
                     results.append(status)
                     logger.info(status)
-                    yield gr.update(value="\n".join(results))
+                    yield gr.update(value="\n".join(results)), None
                     
                     for file in file_path:
                         if file is None:
@@ -218,17 +218,17 @@ class ContentTransformer:
                         status = f"Processing file {current_item}/{total_items}: {content_name}"
                         results.append(status)
                         logger.info(status)
-                        yield gr.update(value="\n".join(results))
+                        yield gr.update(value="\n".join(results)), None
                         try:
                             result = self._process_single_file(file.name, content_name, language)
                             results.append(result)
                             logger.info(result)
-                            yield gr.update(value="\n".join(results))
+                            yield gr.update(value="\n".join(results)), None
                         except Exception as e:
                             error_msg = f"Error processing file {content_name}: {str(e)}"
                             logger.error(error_msg)
                             results.append(error_msg)
-                            yield gr.update(value="\n".join(results))
+                            yield gr.update(value="\n".join(results)), None
                 else:
                     # Handle single file
                     current_item += 1
@@ -236,28 +236,28 @@ class ContentTransformer:
                     status = f"Processing file {current_item}/{total_items}: {content_name}"
                     results.append(status)
                     logger.info(status)
-                    yield gr.update(value="\n".join(results))
+                    yield gr.update(value="\n".join(results)), None
                     try:
                         result = self._process_single_file(file_path.name, content_name, language)
                         results.append(result)
                         logger.info(result)
-                        yield gr.update(value="\n".join(results))
+                        yield gr.update(value="\n".join(results)), None
                     except Exception as e:
                         error_msg = f"Error processing file {content_name}: {str(e)}"
                         logger.error(error_msg)
                         results.append(error_msg)
-                        yield gr.update(value="\n".join(results))
+                        yield gr.update(value="\n".join(results)), None
             
             # Add final status
             status = "Processing completed!"
             results.append(status)
             logger.info(status)
-            yield gr.update(value="\n".join(results))
+            yield gr.update(value="\n".join(results)), None
             
         except Exception as e:
             error_msg = f"Error processing content: {str(e)}"
             logger.error(error_msg)
-            yield gr.update(value=error_msg)
+            yield gr.update(value=error_msg), None
     
     def _process_single_file(self, file_path, content_name, language, youtube_url=None):
         """Process a single file"""
@@ -358,7 +358,7 @@ def create_interface():
             transcribe_btn.click(
                 transformer.process_content,
                 inputs=[file_input, youtube_urls, language],
-                outputs=output,
+                outputs=[output, file_input],  # Clear file input after processing
                 queue=True  # Enable queue for this button
             )
     

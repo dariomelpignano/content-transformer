@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 # See .env.example for the expected structure.
 load_dotenv()
 
+# Create output directory if it doesn't exist
+OUTPUT_DIR = Path("output")
+OUTPUT_DIR.mkdir(exist_ok=True)
+
 class ContentTransformer:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -117,23 +121,56 @@ class ContentTransformer:
     def extract_audio_from_video(self, video_path):
         """Extract audio from video file using ffmpeg"""
         try:
+            # Ensure video_path is a string and exists
+            video_path = str(video_path)
+            if not os.path.exists(video_path):
+                raise FileNotFoundError(f"Video file not found: {video_path}")
+            
+            logger.info(f"Extracting audio from video: {video_path}")
+            
+            # Create a temporary file with a unique name
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+            temp_path = temp_file.name
+            temp_file.close()
+            
+            logger.info(f"Created temporary file: {temp_path}")
+            
             # Extract audio to MP3 format
-            subprocess.run([
+            cmd = [
                 'ffmpeg', '-i', video_path,
                 '-vn',  # No video
                 '-acodec', 'libmp3lame',  # Use MP3 codec
                 '-q:a', '2',  # High quality MP3
-                temp_file.name
-            ], check=True, capture_output=True)
-            return temp_file.name
+                '-y',  # Overwrite output file if it exists
+                temp_path
+            ]
+            logger.info(f"Running command: {' '.join(cmd)}")
+            
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            logger.info(f"FFmpeg output: {result.stdout}")
+            
+            if result.stderr:
+                logger.warning(f"FFmpeg warnings: {result.stderr}")
+            
+            # Verify the output file exists and has content
+            if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+                raise Exception("Failed to extract audio: output file is empty or missing")
+            
+            return temp_path
         except Exception as e:
+            logger.error(f"Error in extract_audio_from_video: {str(e)}")
             raise Exception(f"Error extracting audio from video: {str(e)}")
     
     def transcribe_audio(self, audio_path, language="en"):
         """Transcribe audio using Faster Whisper"""
         try:
+            # Ensure audio_path is a string and exists
+            audio_path = str(audio_path)
+            if not os.path.exists(audio_path):
+                raise FileNotFoundError(f"Audio file not found: {audio_path}")
+            
             logger.info(f"Transcribing audio in language: {language}")
+            logger.info(f"Audio file path: {audio_path}")
             
             # If language is 'auto', let Faster Whisper detect it
             if language == "auto":
@@ -150,24 +187,50 @@ class ContentTransformer:
             
             # Get total duration from info
             total_duration = info.duration if hasattr(info, 'duration') else 0
+            logger.info(f"Total duration: {total_duration} seconds")
             
             # Combine all segments into a single text and track progress
             transcription = ""
             last_progress = 0
-            for segment in segments:
-                transcription += segment.text + " "
-                # Calculate progress based on segment end time
-                if total_duration > 0:
-                    current_progress = min(1.0, segment.end / total_duration)
-                    # Only yield if progress has increased by at least 5%
-                    if current_progress - last_progress >= 0.05:
-                        last_progress = current_progress
-                        yield current_progress, transcription.strip()
+            last_yield_time = datetime.now()
             
-            transcription = transcription.strip()
-            
-            logger.info(f"Transcription completed for {audio_path}")
-            return transcription
+            try:
+                for segment in segments:
+                    if not self._processing:
+                        logger.info("Transcription cancelled by user")
+                        # Save partial transcription if we have any
+                        if transcription.strip():
+                            yield 0, transcription.strip()
+                        return transcription.strip()
+                        
+                    transcription += segment.text + " "
+                    # Calculate progress based on segment end time
+                    if total_duration > 0:
+                        current_progress = min(1.0, segment.end / total_duration)
+                        # Yield if progress has increased by at least 5% or 5 seconds have passed
+                        current_time = datetime.now()
+                        if (current_progress - last_progress >= 0.05 or 
+                            (current_time - last_yield_time).total_seconds() >= 5):
+                            last_progress = current_progress
+                            last_yield_time = current_time
+                            yield current_progress, transcription.strip()
+                
+                transcription = transcription.strip()
+                logger.info(f"Transcription completed for {audio_path}")
+                return transcription
+                
+            except KeyboardInterrupt:
+                logger.warning("Transcription interrupted by user")
+                # Save partial transcription if we have any
+                if transcription.strip():
+                    yield 0, transcription.strip()
+                return transcription.strip()
+            except Exception as e:
+                logger.error(f"Error during transcription: {str(e)}")
+                # Save partial transcription if we have any
+                if transcription.strip():
+                    yield 0, transcription.strip()
+                return transcription.strip()
             
         except Exception as e:
             logger.error(f"Error in transcribe_audio: {str(e)}")
@@ -180,6 +243,7 @@ class ContentTransformer:
             results = []
             current_item = 0
             total_items = 0
+            temp_files = []  # Track temporary files for cleanup
             
             # Count total items to process
             if youtube_urls:
@@ -194,151 +258,151 @@ class ContentTransformer:
             if total_items == 0:
                 return gr.update(value="Please upload a file or enter YouTube URLs"), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
             
-            # Handle YouTube URLs
-            if youtube_urls and self._processing:
-                urls = [url.strip() for url in youtube_urls.split('\n') if url.strip()]
-                if urls:
-                    status = f"Processing {len(urls)} YouTube URLs..."
-                    results.append(status)
-                    logger.info(status)
-                    yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
-                    
-                    for url in urls:
-                        if not self._processing:
-                            break
-                        current_item += 1
-                        status = f"Processing YouTube video {current_item}/{total_items}: {url}"
+            try:
+                # Handle YouTube URLs
+                if youtube_urls and self._processing:
+                    urls = [url.strip() for url in youtube_urls.split('\n') if url.strip()]
+                    if urls:
+                        status = f"Processing {len(urls)} YouTube URLs..."
                         results.append(status)
                         logger.info(status)
-                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0), gr.update(value=url)
-                        try:
-                            # Download YouTube audio
-                            temp_file, content_name = self.download_youtube_audio(url)
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0.3), gr.update(value=f"Downloading: {content_name}")
-                            # Process file with progress updates
-                            for progress, partial_text in self.transcribe_audio(temp_file, language):
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=progress), gr.update(value=f"Transcribing: {content_name}")
-                            result = f"Completed: {content_name}"
-                            results.append(result)
-                            logger.info(result)
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=1), gr.update(value=f"Completed: {content_name}")
-                        except Exception as e:
-                            error_msg = f"Error processing YouTube video {url}: {str(e)}"
-                            logger.error(error_msg)
-                            results.append(error_msg)
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0), gr.update(value=f"Error: {content_name}")
-            
-            # Handle file upload
-            if file_path and self._processing:
-                # Handle multiple files
-                if isinstance(file_path, list):
-                    status = f"Processing {len([f for f in file_path if f is not None])} uploaded files..."
-                    results.append(status)
-                    logger.info(status)
-                    yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
-                    
-                    for file in file_path:
-                        if not self._processing:
-                            break
-                        if file is None:
-                            continue
-                        current_item += 1
-                        content_name = Path(file.name).stem
-                        status = f"Processing file {current_item}/{total_items}: {content_name}"
+                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
+                        
+                        for url in urls:
+                            if not self._processing:
+                                break
+                            current_item += 1
+                            status = f"Processing YouTube video {current_item}/{total_items}: {url}"
+                            results.append(status)
+                            logger.info(status)
+                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=url)
+                            try:
+                                # Download YouTube audio
+                                temp_file, content_name = self.download_youtube_audio(url)
+                                temp_files.append(temp_file)  # Track for cleanup
+                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=30), gr.update(value=f"Downloading: {content_name}")
+                                
+                                # Process file with progress updates
+                                transcription = ""
+                                try:
+                                    for progress, partial_text in self.transcribe_audio(temp_file, language):
+                                        transcription = partial_text
+                                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=int(progress*100)), gr.update(value=f"Transcribing: {content_name}")
+                                except Exception as e:
+                                    logger.error(f"Error during transcription of {content_name}: {str(e)}")
+                                    if transcription.strip():
+                                        # Save partial transcription if we have any
+                                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                        output_file = OUTPUT_DIR / f"{content_name}_{timestamp}_partial.md"
+                                        with open(output_file, "w", encoding="utf-8") as f:
+                                            f.write(f"# {content_name} (Partial Transcription)\n\n")
+                                            f.write(f"## URL\n\n{url}\n\n")
+                                            f.write("## Transcription\n\n")
+                                            f.write(transcription)
+                                        results.append(f"Saved partial transcription for {content_name} to {output_file}")
+                                    raise
+                                
+                                # Save transcription to file
+                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                output_file = OUTPUT_DIR / f"{content_name}_{timestamp}.md"
+                                with open(output_file, "w", encoding="utf-8") as f:
+                                    f.write(f"# {content_name}\n\n")
+                                    f.write(f"## URL\n\n{url}\n\n")
+                                    f.write("## Transcription\n\n")
+                                    f.write(transcription)
+                                
+                                result = f"Completed: {content_name} (saved to {output_file})"
+                                results.append(result)
+                                logger.info(result)
+                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=100), gr.update(value=f"Completed: {content_name}")
+                            except Exception as e:
+                                error_msg = f"Error processing YouTube video {url}: {str(e)}"
+                                logger.error(error_msg)
+                                results.append(error_msg)
+                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=f"Error: {content_name}")
+                
+                # Handle file upload
+                if file_path and self._processing:
+                    # Handle multiple files
+                    if isinstance(file_path, list):
+                        status = f"Processing {len([f for f in file_path if f is not None])} uploaded files..."
                         results.append(status)
                         logger.info(status)
-                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0), gr.update(value=content_name)
-                        try:
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0.3), gr.update(value=f"Processing: {content_name}")
-                            # Process file with progress updates
-                            for progress, partial_text in self.transcribe_audio(file.name, language):
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=progress), gr.update(value=f"Transcribing: {content_name}")
-                            result = f"Completed: {content_name}"
-                            results.append(result)
-                            logger.info(result)
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=1), gr.update(value=f"Completed: {content_name}")
-                        except Exception as e:
-                            error_msg = f"Error processing file {content_name}: {str(e)}"
-                            logger.error(error_msg)
-                            results.append(error_msg)
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0), gr.update(value=f"Error: {content_name}")
+                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
+                        
+                        for file in file_path:
+                            if not self._processing:
+                                break
+                            if file is None:
+                                continue
+                            current_item += 1
+                            content_name = Path(file.name).stem
+                            status = f"Processing file {current_item}/{total_items}: {content_name}"
+                            results.append(status)
+                            logger.info(status)
+                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=content_name)
+                            try:
+                                # Extract audio from video
+                                temp_audio = self.extract_audio_from_video(file.name)
+                                temp_files.append(temp_audio)  # Track for cleanup
+                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=30), gr.update(value=f"Extracting audio: {content_name}")
+                                
+                                # Process file with progress updates
+                                transcription = ""
+                                try:
+                                    for progress, partial_text in self.transcribe_audio(temp_audio, language):
+                                        transcription = partial_text
+                                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=int(progress*100)), gr.update(value=f"Transcribing: {content_name}")
+                                except Exception as e:
+                                    logger.error(f"Error during transcription of {content_name}: {str(e)}")
+                                    if transcription.strip():
+                                        # Save partial transcription if we have any
+                                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                        output_file = OUTPUT_DIR / f"{content_name}_{timestamp}_partial.md"
+                                        with open(output_file, "w", encoding="utf-8") as f:
+                                            f.write(f"# {content_name} (Partial Transcription)\n\n")
+                                            f.write("## Transcription\n\n")
+                                            f.write(transcription)
+                                        results.append(f"Saved partial transcription for {content_name} to {output_file}")
+                                    raise
+                                
+                                # Save transcription to file
+                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                output_file = OUTPUT_DIR / f"{content_name}_{timestamp}.md"
+                                with open(output_file, "w", encoding="utf-8") as f:
+                                    f.write(f"# {content_name}\n\n")
+                                    f.write("## Transcription\n\n")
+                                    f.write(transcription)
+                                
+                                result = f"Completed: {content_name} (saved to {output_file})"
+                                results.append(result)
+                                logger.info(result)
+                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=100), gr.update(value=f"Completed: {content_name}")
+                            except Exception as e:
+                                error_msg = f"Error processing file {content_name}: {str(e)}"
+                                logger.error(error_msg)
+                                results.append(error_msg)
+                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=f"Error: {content_name}")
+                
+                # Final status
+                if self._processing:
+                    yield gr.update(value="\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=100), gr.update(value=100), gr.update(value=100), gr.update(value="Processing completed!")
                 else:
-                    # Handle single file
-                    current_item += 1
-                    content_name = Path(file_path.name).stem
-                    status = f"Processing file {current_item}/{total_items}: {content_name}"
-                    results.append(status)
-                    logger.info(status)
-                    yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0), gr.update(value=content_name)
+                    yield gr.update(value="\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=100), gr.update(value=0), gr.update(value=0), gr.update(value="Processing cancelled!")
+                    
+            finally:
+                # Clean up temporary files
+                for temp_file in temp_files:
                     try:
-                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0.3), gr.update(value=f"Processing: {content_name}")
-                        # Process file with progress updates
-                        for progress, partial_text in self.transcribe_audio(file_path.name, language):
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=progress), gr.update(value=f"Transcribing: {content_name}")
-                        result = f"Completed: {content_name}"
-                        results.append(result)
-                        logger.info(result)
-                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=1), gr.update(value=f"Completed: {content_name}")
+                        if os.path.exists(temp_file):
+                            os.unlink(temp_file)
+                            logger.info(f"Cleaned up temporary file: {temp_file}")
                     except Exception as e:
-                        error_msg = f"Error processing file {content_name}: {str(e)}"
-                        logger.error(error_msg)
-                        results.append(error_msg)
-                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=current_item/total_items), gr.update(value=0), gr.update(value=0), gr.update(value=f"Error: {content_name}")
-            
-            # Final summary
-            if self._processing:
-                summary = f"Processing complete. Successfully processed {current_item} items."
-            else:
-                summary = f"Processing cancelled. Processed {current_item} items before cancellation."
-            results.append(summary)
-            yield gr.update(value="\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=1), gr.update(value=0), gr.update(value=0), gr.update(value="")
-            
-            return gr.update(value="\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=1), gr.update(value=0), gr.update(value=0), gr.update(value="")
+                        logger.warning(f"Error cleaning up temporary file {temp_file}: {str(e)}")
             
         except Exception as e:
-            error_msg = f"An unexpected error occurred: {str(e)}"
-            logger.error(error_msg)
-            return gr.update(value=error_msg), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
-        finally:
-            self._processing = False
-    
-    def _process_single_file(self, file_path, content_name, language, youtube_url=None):
-        """Process a single file"""
-        try:
-            logger.info(f"Processing file: {file_path} in language: {language}")
-            
-            # Handle different file types
-            if file_path.endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                # Extract audio from video
-                audio_file = self.extract_audio_from_video(file_path)
-            else:
-                audio_file = file_path
-            
-            # Transcribe audio with progress updates
-            transcription = ""
-            for progress, partial_text in self.transcribe_audio(audio_file, language):
-                transcription = partial_text  # Store the partial transcription
-                yield progress  # Update the progress bar
-            
-            # Save to markdown file
-            output_file = f"{content_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(f"# {content_name}\n\n")
-                if youtube_url:
-                    f.write(f"## URL\n\n{youtube_url}\n\n")
-                f.write("## Transcription\n\n")
-                f.write(transcription)
-            
-            # Cleanup temporary files
-            if file_path.endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                os.unlink(audio_file)
-            
-            logger.info(f"Successfully processed {content_name}")
-            return f"Transcription saved to {output_file}"
-            
-        except Exception as e:
-            logger.error(f"Error processing file {content_name}: {str(e)}")
-            raise Exception(f"Error processing file {content_name}: {str(e)}")
+            logger.error(f"Error in process_content: {str(e)}")
+            yield gr.update(value=f"Error: {str(e)}"), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="Error occurred!")
 
 def create_interface():
     """Create the Gradio interface"""
@@ -416,9 +480,9 @@ def create_interface():
             with gr.Row():
                 progress_bar = gr.Slider(
                     minimum=0,
-                    maximum=1,
+                    maximum=100,
                     value=0,
-                    label="Overall Progress",
+                    label="Overall Progress (%)",
                     interactive=False
                 )
                 memory_bar = gr.Slider(
@@ -432,9 +496,9 @@ def create_interface():
             with gr.Row():
                 current_file_progress = gr.Slider(
                     minimum=0,
-                    maximum=1,
+                    maximum=100,
                     value=0,
-                    label="Current File Progress",
+                    label="Current File Progress (%)",
                     interactive=False
                 )
                 current_file_name = gr.Textbox(

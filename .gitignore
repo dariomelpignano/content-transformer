@@ -27,20 +27,21 @@ wheels/
 venv/
 ENV/
 env/
-.env/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# OS
 .DS_Store
+Thumbs.db
 
 # Project specific
-*.md
-!README.md
-*.wav
+temp_audio.wav
 *.mp3
+*.wav
 *.mp4
 *.avi
 *.mov

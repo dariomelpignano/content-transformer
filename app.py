@@ -266,7 +266,7 @@ class ContentTransformer:
                         status = f"Processing {len(urls)} YouTube URLs..."
                         results.append(status)
                         logger.info(status)
-                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
+                        yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value="")
                         
                         for url in urls:
                             if not self._processing:
@@ -275,19 +275,19 @@ class ContentTransformer:
                             status = f"Processing YouTube video {current_item}/{total_items}: {url}"
                             results.append(status)
                             logger.info(status)
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=url)
+                            yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=url)
                             try:
                                 # Download YouTube audio
                                 temp_file, content_name = self.download_youtube_audio(url)
                                 temp_files.append(temp_file)  # Track for cleanup
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=30), gr.update(value=f"Downloading: {content_name}")
+                                yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=30), gr.update(value=f"Downloading: {content_name}")
                                 
                                 # Process file with progress updates
                                 transcription = ""
                                 try:
                                     for progress, partial_text in self.transcribe_audio(temp_file, language):
                                         transcription = partial_text
-                                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=int(progress*100)), gr.update(value=f"Transcribing: {content_name}")
+                                        yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=int(progress*100)), gr.update(value=f"Transcribing: {content_name}")
                                 except Exception as e:
                                     logger.error(f"Error during transcription of {content_name}: {str(e)}")
                                     if transcription.strip():
@@ -314,12 +314,12 @@ class ContentTransformer:
                                 result = f"Completed: {content_name} (saved to {output_file})"
                                 results.append(result)
                                 logger.info(result)
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=100), gr.update(value=f"Completed: {content_name}")
+                                yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=100), gr.update(value=f"Completed: {content_name}")
                             except Exception as e:
                                 error_msg = f"Error processing YouTube video {url}: {str(e)}"
                                 logger.error(error_msg)
                                 results.append(error_msg)
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=f"Error: {content_name}")
+                                yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=f"Error: {content_name}")
                 
                 # Handle file upload
                 if file_path and self._processing:
@@ -328,7 +328,7 @@ class ContentTransformer:
                         status = f"Processing {len([f for f in file_path if f is not None])} uploaded files..."
                         results.append(status)
                         logger.info(status)
-                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="")
+                        yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=0), gr.update(value=0), gr.update(value="")
                         
                         for file in file_path:
                             if not self._processing:
@@ -340,19 +340,19 @@ class ContentTransformer:
                             status = f"Processing file {current_item}/{total_items}: {content_name}"
                             results.append(status)
                             logger.info(status)
-                            yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=content_name)
+                            yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=content_name)
                             try:
                                 # Extract audio from video
                                 temp_audio = self.extract_audio_from_video(file.name)
                                 temp_files.append(temp_audio)  # Track for cleanup
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=30), gr.update(value=f"Extracting audio: {content_name}")
+                                yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=30), gr.update(value=f"Extracting audio: {content_name}")
                                 
                                 # Process file with progress updates
                                 transcription = ""
                                 try:
                                     for progress, partial_text in self.transcribe_audio(temp_audio, language):
                                         transcription = partial_text
-                                        yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=int(progress*100)), gr.update(value=f"Transcribing: {content_name}")
+                                        yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=int(progress*100)), gr.update(value=f"Transcribing: {content_name}")
                                 except Exception as e:
                                     logger.error(f"Error during transcription of {content_name}: {str(e)}")
                                     if transcription.strip():
@@ -377,18 +377,18 @@ class ContentTransformer:
                                 result = f"Completed: {content_name} (saved to {output_file})"
                                 results.append(result)
                                 logger.info(result)
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=100), gr.update(value=f"Completed: {content_name}")
+                                yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=100), gr.update(value=f"Completed: {content_name}")
                             except Exception as e:
                                 error_msg = f"Error processing file {content_name}: {str(e)}"
                                 logger.error(error_msg)
                                 results.append(error_msg)
-                                yield gr.update(value="\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=0), gr.update(value=f"Error: {content_name}")
+                                yield gr.update(value="\\n".join(results)), None, gr.update(interactive=False), gr.update(visible=True), gr.update(visible=True), gr.update(value=int((current_item/total_items)*100)), gr.update(value=0), gr.update(value=f"Error: {content_name}")
                 
                 # Final status
                 if self._processing:
-                    yield gr.update(value="\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=100), gr.update(value=100), gr.update(value=100), gr.update(value="Processing completed!")
+                    yield gr.update(value="\\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=100), gr.update(value=100), gr.update(value="Processing completed!")
                 else:
-                    yield gr.update(value="\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=100), gr.update(value=0), gr.update(value=0), gr.update(value="Processing cancelled!")
+                    yield gr.update(value="\\n".join(results)), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=100), gr.update(value=0), gr.update(value="Processing cancelled!")
                     
             finally:
                 # Clean up temporary files
@@ -402,7 +402,7 @@ class ContentTransformer:
             
         except Exception as e:
             logger.error(f"Error in process_content: {str(e)}")
-            yield gr.update(value=f"Error: {str(e)}"), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=0), gr.update(value=0), gr.update(value=0), gr.update(value="Error occurred!")
+            yield gr.update(value=f"Error: {str(e)}"), None, gr.update(interactive=True), gr.update(visible=False), gr.update(visible=False), gr.update(value=0), gr.update(value=0), gr.update(value="Error occurred!")
 
 def create_interface():
     """Create the Gradio interface"""
@@ -485,13 +485,6 @@ def create_interface():
                     label="Overall Progress (%)",
                     interactive=False
                 )
-                memory_bar = gr.Slider(
-                    minimum=0,
-                    maximum=100,
-                    value=0,
-                    label="Memory Usage (%)",
-                    interactive=False
-                )
             
             with gr.Row():
                 current_file_progress = gr.Slider(
@@ -542,7 +535,7 @@ def create_interface():
             ).then(
                 transformer.process_content,
                 inputs=[file_input, youtube_urls, language],
-                outputs=[status, file_input, youtube_urls, processing_indicator, cancel_btn, progress_bar, memory_bar, current_file_progress, current_file_name]
+                outputs=[status, file_input, youtube_urls, processing_indicator, cancel_btn, progress_bar, current_file_progress, current_file_name]
             ).then(
                 lambda: update_ui_state(False),
                 outputs=[file_input, youtube_urls, transcribe_btn, cancel_btn, processing_indicator]
@@ -550,7 +543,7 @@ def create_interface():
             
             cancel_btn.click(
                 transformer.cancel_processing,
-                outputs=[status, file_input, youtube_urls, processing_indicator, cancel_btn, progress_bar, memory_bar, current_file_progress, current_file_name]
+                outputs=[status, file_input, youtube_urls, processing_indicator, cancel_btn, progress_bar, current_file_progress, current_file_name]
             ).then(
                 lambda: update_ui_state(False),
                 outputs=[file_input, youtube_urls, transcribe_btn, cancel_btn, processing_indicator]

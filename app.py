@@ -381,9 +381,10 @@ class ContentTransformer:
                                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                                 output_file = OUTPUT_DIR / f"{content_name}_{timestamp}_partial.md"
                                 with open(output_file, "w", encoding="utf-8") as f:
-                                    f.write(f"# {content_name} (Partial Transcription)\\n\\n")
-                                    f.write(f"## URL\\n\\n{url}\\n\\n")
-                                    f.write("## Transcription\\n\\n")
+                                    f.write(f"# {content_name} (Partial Transcription)\n\n")
+                                    if 'url' in locals(): # Check if url exists (for YouTube videos)
+                                        f.write(f"## URL\n\n{url}\n\n")
+                                    f.write("## Transcription\n\n")
                                     f.write(transcription)
                                 results.append(f"Saved partial transcription for {content_name} to {output_file}")
                             raise # Re-raise to be caught by the outer exception handler for this item
@@ -392,9 +393,10 @@ class ContentTransformer:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         output_file = OUTPUT_DIR / f"{content_name}_{timestamp}.md"
                         with open(output_file, "w", encoding="utf-8") as f:
-                            f.write(f"# {content_name}\\n\\n")
-                            f.write(f"## URL\\n\\n{url}\\n\\n")
-                            f.write("## Transcription\\n\\n")
+                            f.write(f"# {content_name}\n\n")
+                            if 'url' in locals(): # Check if url exists (for YouTube videos)
+                                f.write(f"## URL\n\n{url}\n\n")
+                            f.write("## Transcription\n\n")
                             f.write(transcription)
 
                         result = f"Completed: {content_name} (saved to {output_file})"
@@ -456,8 +458,8 @@ class ContentTransformer:
                                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                                 output_file = OUTPUT_DIR / f"{content_name}_{timestamp}_partial.md"
                                 with open(output_file, "w", encoding="utf-8") as f:
-                                    f.write(f"# {content_name} (Partial Transcription)\\n\\n")
-                                    f.write("## Transcription\\n\\n")
+                                    f.write(f"# {content_name} (Partial Transcription)\n\n")
+                                    f.write("## Transcription\n\n")
                                     f.write(transcription)
                                 results.append(f"Saved partial transcription for {content_name} to {output_file}")
                             raise # Re-raise
@@ -466,8 +468,8 @@ class ContentTransformer:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         output_file = OUTPUT_DIR / f"{content_name}_{timestamp}.md"
                         with open(output_file, "w", encoding="utf-8") as f:
-                            f.write(f"# {content_name}\\n\\n")
-                            f.write("## Transcription\\n\\n")
+                            f.write(f"# {content_name}\n\n")
+                            f.write("## Transcription\n\n")
                             f.write(transcription)
 
                         result = f"Completed: {content_name} (saved to {output_file})"
